@@ -11,64 +11,50 @@ import requests
 import sys
 import time
 
-def main():
-    verbose = False
-    config = ConfigParser()
+Verbose = False
 
-    if "-v" in sys.argv:
-        verbose = True
-        logging.basicConfig(level=logging.DEBUG)
-        http.client.HTTPConnection.debuglevel = 1
+def get_token(authorization: str):
+    print("Obtaining token...")
 
-    config_file = "/etc/honeywell-monitor.conf"
-    config.read(config_file)
+    response = requests.post(
+        "https://api.honeywell.com/oauth2/accesstoken",
+        headers = {
+            "Authorization": authorization
+        },
+        data = {
+            "grant_type": "client_credentials"
+        }
+    )
 
-    client_id = config.get("config", "client_id")
-    client_secret = config.get("config", "client_secret")
-    authorization = base64.b64encode((client_id + ":" + client_secret).encode("ascii")).decode("ascii")
+    if Verbose: print(response.content)
+    response.raise_for_status()
+    token = response.json()
 
-    user_ref_id = config.get("config", "user_ref_id")
-    
-    token_expiration = datetime.now(timezone.utc)
-    previous_locations = []
+    token_expiration = datetime.now(timezone.utc) + timedelta(seconds = int(token["expires_in"]))
+    print("Token obtained, expires at", token_expiration)
 
-    while True:
-        if datetime.now(timezone.utc) + timedelta(seconds = 10) >= token_expiration:
-            print("Obtaining token...")
-            token_response = requests.post(
-                "https://api.honeywell.com/oauth2/accesstoken",
-                headers={
-                    "Authorization": authorization
-                },
-                data={
-                    "grant_type": "client_credentials"
-                }
-            )
+    return token, token_expiration
 
-            if verbose: print(token_response.content)
-            token_response.raise_for_status()
-            token = token_response.json()
+def get_locations(client_id: str, token_type: str, token: str, user_ref_id: str) -> list:
+    print("Obtaining location information...    ")
 
-            token_expiration = datetime.now(timezone.utc) + timedelta(seconds = int(token["expires_in"]))
-            print("Token obtained, expires at", token_expiration)
-        
+    response = requests.get(
+        "https://api.honeywell.com/v2/locations?apikey=" + client_id,
+        headers = {
+            "Authorization": token_type + " " + token,
+            "UserRefID": user_ref_id
+        }
+    )
 
-        print("Obtaining location information...    ")
-        location_response = requests.get(
-            "https://api.honeywell.com/v2/locations?apikey=" + client_id,
-            headers={
-                "Authorization": token["token_type"] + " " + token["access_token"],
-                "UserRefID": user_ref_id
-            }
-        )
+    if Verbose: print(response.content)
+    response.raise_for_status()
+    locations = response.json()
+    print("Location information obtained")
 
-        if verbose: print(location_response.content)
-        location_response.raise_for_status()
-        locations = location_response.json()
+    return locations
 
-        print("Location information obtained, checking for changes...")
-
-        if len(previous_locations) > 0:
+def compare_locations(previous_locations: list, locations: list):
+    if len(previous_locations) > 0:
             for location in locations:
                 for previous_location in previous_locations:
                     if location["locationID"] == previous_location["locationID"]:
@@ -99,19 +85,35 @@ def main():
 
                                     if cool_setpoint_changed:
                                         print(device_name, "cool setpoint changed from", previous_heat_setpoint, "to", heat_setpoint)
-        
-        previous_locations = locations
 
+def main():
+
+    if "-v" in sys.argv:
+        VERBOSE = True
+        logging.basicConfig(level=logging.DEBUG)
+        http.client.HTTPConnection.debuglevel = 1
+
+    config = ConfigParser()
+    config.read("/etc/honeywell-monitor.conf")
+
+    client_id = config.get("config", "client_id")
+    client_secret = config.get("config", "client_secret")
+    user_ref_id = config.get("config", "user_ref_id")
+
+    authorization = base64.b64encode((client_id + ":" + client_secret).encode("ascii")).decode("ascii")
+    
+    token_expiration = datetime.now(timezone.utc)
+    previous_locations = []
+
+    while True:
+        if datetime.now(timezone.utc) + timedelta(seconds = 10) >= token_expiration:
+            token, token_expiration = get_token(authorization)
+        
+        locations = get_locations(client_id, token["token_type"], token["access_token"], user_ref_id)
+        compare_locations(previous_locations, locations)
+        previous_locations = locations
         print("Sleeping...")
         time.sleep(60)
-
-
-                                    
-                                    
-                                    
-
-
-
 
 if __name__ == "__main__":
     main()
