@@ -70,6 +70,12 @@ def compare_locations(previous_locations: list, locations: list):
                                     if mode_changed:
                                         print(device_name, "mode changed from", previous_mode, "to", mode)
 
+                                    fan_mode = device["settings"]["fan"]["changeableValues"]["mode"]
+                                    previous_fan_mode = previous_device["settings"]["fan"]["changeableValues"]["mode"]
+                                    fan_mode_changed = fan_mode != previous_fan_mode
+
+                                    if fan_mode_changed:
+                                        print(device_name, "fan mode changed from", previous_fan_mode, "to", fan_mode)
 
                                     heat_setpoint = device["changeableValues"]["heatSetpoint"]
                                     previous_heat_setpoint = previous_device["changeableValues"]["heatSetpoint"]
