@@ -6,6 +6,9 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 import http.client
+from influxdb_client import InfluxDBClient;
+from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client import Point
 import logging
 import requests
 import sys
@@ -92,6 +95,22 @@ def compare_locations(previous_locations: list, locations: list):
                                     if cool_setpoint_changed:
                                         print(device_name, "cool setpoint changed from", previous_heat_setpoint, "to", heat_setpoint)
 
+def process_locations(locations, influxdb_bucket, influxdb_org, write_api):
+    for location in locations:
+        for device in location["devices"]:
+            device_name = device["userDefinedDeviceName"]
+            write_api.write(
+                influxdb_bucket, 
+                influxdb_org, 
+                Point("status")
+                    .tag("device_name", device_name)
+                    .field("set_mode", device["changeableValues"]["mode"])
+                    .field("operation_mode", device["operationStatus"]["mode"])
+                    .field("fan_mode", device["settings"]["fan"]["changeableValues"]["mode"])
+                    .field("heat_setpoint", device["changeableValues"]["heatSetpoint"])
+                    .field("cool_setpoint", device["changeableValues"]["coolSetpoint"])
+                    .field("indoor_temperature", device["indoorTemperature"]))
+
 def main():
 
     if "-v" in sys.argv:
@@ -111,11 +130,20 @@ def main():
     token_expiration = datetime.now(timezone.utc)
     previous_locations = []
 
+    influxdb_url = config.get("config", "influxdb_url")
+    influxdb_token = config.get("config", "influxdb_token")
+    influxdb_org = config.get("config", "influxdb_org")
+    influxdb_bucket = config.get("config", "influxdb_bucket")
+
+    client = InfluxDBClient(url=influxdb_url, token=influxdb_token, org=influxdb_org)
+    write_api = client.write_api(write_options=SYNCHRONOUS)
+
     while True:
         if datetime.now(timezone.utc) + timedelta(seconds = 10) >= token_expiration:
             token, token_expiration = get_token(authorization)
         
         locations = get_locations(client_id, token["token_type"], token["access_token"], user_ref_id)
+        process_locations(locations, influxdb_bucket, influxdb_org, write_api)
         compare_locations(previous_locations, locations)
         previous_locations = locations
         print("Sleeping...")
