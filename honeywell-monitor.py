@@ -96,6 +96,7 @@ def compare_locations(previous_locations: list, locations: list):
                                         print(device_name, "cool setpoint changed from", previous_heat_setpoint, "to", heat_setpoint)
 
 def process_locations(locations, influxdb_bucket, influxdb_org, write_api):
+    print("Writing data to InfluxDB...")
     for location in locations:
         for device in location["devices"]:
             device_name = device["userDefinedDeviceName"]
@@ -110,6 +111,7 @@ def process_locations(locations, influxdb_bucket, influxdb_org, write_api):
                     .field("heat_setpoint", device["changeableValues"]["heatSetpoint"])
                     .field("cool_setpoint", device["changeableValues"]["coolSetpoint"])
                     .field("indoor_temperature", device["indoorTemperature"]))
+    print("Data written")
 
 def main():
 
