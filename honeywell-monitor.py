@@ -149,6 +149,7 @@ def main():
         compare_locations(previous_locations, locations)
         previous_locations = locations
         print("Sleeping...")
+        sys.stdout.flush()
         time.sleep(60)
 
 if __name__ == "__main__":
